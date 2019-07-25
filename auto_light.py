@@ -22,18 +22,18 @@ class AutoLight(hass.Hass):
     if "sensors" in self.args:
       for sensor_config in self.args["sensors"]:
         if sensor_config["type"].lower() == "motion":
-          self.sensors.append(MotionSensor(sensor_config, self.listen_state, self.log, self.get_state, self.get_global_illum_filter_value, self.start_timer_callback, self.cancel_timer_callback, self.on_callback))
+          self.sensors.append(MotionSensor(sensor_config, self.listen_state, self.log, self.get_state, self.get_global_illum_filter_value, self.start_timer_callback, self.cancel_timer_callback, self.on_callback, self.evaluate_light_sensor, self.friendly_name))
         elif sensor_config["type"].lower() == "door":
-          self.sensors.append(DoorSensor(sensor_config, self.listen_state, self.log, self.get_state, self.get_global_illum_filter_value, self.start_timer_callback, self.cancel_timer_callback, self.on_callback))
+          self.sensors.append(DoorSensor(sensor_config, self.listen_state, self.log, self.get_state, self.get_global_illum_filter_value, self.start_timer_callback, self.cancel_timer_callback, self.on_callback, self.evaluate_light_sensor, self.friendly_name))
         else:
           self.log("Specified sensor type not supported: {}".format(sensor_config["type"]))
 
   def get_global_illum_filter_value(self):
     # Called by a sensor when it wants to check the global illumination filter value
     if self.global_illum_sensor_entityid != None:
-      return self.get_state(global_illum_sensor) <= self.global_illum_threshold
+      return self.evaluate_light_sensor(self.global_illum_sensor_entityid, self.global_illum_threshold)
     else:
-      return True
+      return LightSensorEvaluation.fake_result(True)
 
   def start_timer_callback(self):
     # Called by a sensor when it signals the timer to turn off the light should start
@@ -74,14 +74,18 @@ class AutoLight(hass.Hass):
     for light in self.lights:
       if on == "on":
         self.turn_on(light["entity_id"])
-        self.log("Turned ON {}".format(light["entity_id"]))
+        self.log("Turned ON {}".format(self.friendly_name(light["entity_id"])))
       else:
         self.turn_off(light["entity_id"])
-        self.log("Turned OFF {}".format(light["entity_id"]))
+        self.log("Turned OFF {}".format(self.friendly_name(light["entity_id"])))
+  
+  def evaluate_light_sensor(self, entity_id, threshold):
+    sensor_value = int(self.get_state(entity_id))
+    return LightSensorEvaluation.evaluate(self.friendly_name(entity_id), sensor_value, threshold)
 
 # TODO implement abc
 class Sensor:
-  def __init__(self, config, listen_state, log, get_state, global_illum_callback, start_timer_callback, cancel_timer_callback, on_callback):
+  def __init__(self, config, listen_state, log, get_state, global_illum_callback, start_timer_callback, cancel_timer_callback, on_callback, evaluate_light_sensor, friendly_name):
     self.listen_state = listen_state
     self.log = log
     self.global_illum_callback = global_illum_callback
@@ -89,6 +93,8 @@ class Sensor:
     self.start_timer_callback = start_timer_callback
     self.cancel_timer_callback = cancel_timer_callback
     self.on_callback = on_callback
+    self.evaluate_light_sensor = evaluate_light_sensor
+    self.friendly_name = friendly_name
 
     if "light_sensor" in config:
       self.light_sensor = config["light_sensor"]
@@ -101,11 +107,11 @@ class Sensor:
     self.listen_state(self.state_changed, self.sensor_entity_id)
 
     light_sensor_logmsg = self.light_sensor_entity_id if self.light_sensor != None else "NONE"
-    self.log("-- Initialized sensor {} with light sensor {}".format(self.sensor_entity_id, light_sensor_logmsg))
+    self.log("-- Initialized {} sensor {} with light sensor {}".format(self.get_type_name(), self.friendly_name(self.sensor_entity_id), light_sensor_logmsg))
 
-  def __get_illum_filter_value(self):
+  def get_illum_filter_value(self):
     if self.light_sensor != None:
-      return self.get_state(self.light_sensor_entity_id) <= self.light_sensor_threshold
+      return self.evaluate_light_sensor(self.light_sensor_entity_id, self.light_sensor_threshold)
     else:
       return self.global_illum_callback()
 
@@ -127,17 +133,21 @@ class Sensor:
     if new == old:
       return
     
-    self.log("-- {} sensor {} went from {} to {}".format(self.get_type_name, self.sensor_entity_id, old, new))
+    self.log("-- {} sensor {} went from {} to {}".format(self.get_type_name(), self.friendly_name(self.sensor_entity_id), old, new))
 
     # TODO: make the "on" (and perhaps also "off") states configurable
     if new == "on":
-      self.trigger_on()
+      result = self.get_illum_filter_value()
+      if result.dark_enough:
+        self.trigger_on()
+      else:
+        self.log("-- {} sensor ON trigger filtered, light sensor {} value {} is below threshold {}".format(self.friendly_name(self.sensor_entity_id), result.sensor_friendly_name, result.sensor_value, result.threshold))
     else:
       self.trigger_off()
 
 class MotionSensor(Sensor):
   def hold_light_on(self):
-    return self.get_state(self.sensor_entity_id) == "on"
+    return self.get_illum_filter_value() and self.get_state(self.sensor_entity_id) == "on"
 
   def get_type_name(self):
     return "Motion"
@@ -170,3 +180,18 @@ class DoorSensor(Sensor):
     # Door sensors do nothing when closing the door
     # TODO make door sensor behavior more configurable?
     pass
+
+class LightSensorEvaluation:
+  def __init__(self, dark_enough, sensor_friendly_name, value, threshold):
+    self.dark_enough = dark_enough
+    self.sensor_friendly_name = sensor_friendly_name
+    self.value = value
+    self.threshold = threshold
+
+  @classmethod
+  def evaluate(lse, sensor_friendly_name, value, threshold):
+    return LightSensorEvaluation(value <= threshold, sensor_friendly_name, value, threshold)
+
+  @classmethod
+  def fake_result(LightSensorEvaluation, dark_enough):
+    return LightSensorEvaluation(dark_enough, "none", 0, 0)

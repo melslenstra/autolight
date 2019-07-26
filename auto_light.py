@@ -140,8 +140,9 @@ class Sensor:
       result = self.get_illum_filter_value()
       if result.dark_enough:
         self.trigger_on()
+        self.log("-- {} sensor passed, light sensor {} value {} is on or below threshold {}".format(self.friendly_name(self.sensor_entity_id), result.sensor_friendly_name, result.value, result.threshold))
       else:
-        self.log("-- {} sensor ON trigger filtered, light sensor {} value {} is below threshold {}".format(self.friendly_name(self.sensor_entity_id), result.sensor_friendly_name, result.sensor_value, result.threshold))
+        self.log("-- {} sensor filtered, light sensor {} value {} is above threshold {}".format(self.friendly_name(self.sensor_entity_id), result.sensor_friendly_name, result.value, result.threshold))
     else:
       self.trigger_off()
 

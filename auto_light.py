@@ -28,6 +28,10 @@ class AutoLight(hass.Hass):
         else:
           self.log("Specified sensor type not supported: {}".format(sensor_config["type"]))
 
+    # Call start timer routine to make sure any lights that were on during a HA/AppDaemon/app restart are eventually turned off.
+    # This does account for motion sensors holding the light on because they'll eventually turn off and trigger the timer there.
+    self.start_timer_callback()
+
   def get_global_illum_filter_value(self):
     # Called by a sensor when it wants to check the global illumination filter value
     if self.global_illum_sensor_entityid != None:
@@ -139,8 +143,8 @@ class Sensor:
     if new == "on":
       result = self.get_illum_filter_value()
       if result.dark_enough:
-        self.trigger_on()
         self.log("-- {} sensor passed, light sensor {} value {} is on or below threshold {}".format(self.friendly_name(self.sensor_entity_id), result.sensor_friendly_name, result.value, result.threshold))
+        self.trigger_on()
       else:
         self.log("-- {} sensor filtered, light sensor {} value {} is above threshold {}".format(self.friendly_name(self.sensor_entity_id), result.sensor_friendly_name, result.value, result.threshold))
     else:

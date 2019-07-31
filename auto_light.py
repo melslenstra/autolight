@@ -3,7 +3,7 @@ import appdaemon.plugins.hass.hassapi as hass
 class AutoLight(hass.Hass):
 
   def initialize(self):
-    self.log("Auto Light initializing")
+    self.log("============= Auto Light initializing ============= ")
 
     self.timer = None
 
@@ -30,7 +30,8 @@ class AutoLight(hass.Hass):
 
     # Call start timer routine to make sure any lights that were on during a HA/AppDaemon/app restart are eventually turned off.
     # This does account for motion sensors holding the light on because they'll eventually turn off and trigger the timer there.
-    self.start_timer_callback()
+    if self.any_light_on():
+      self.start_timer_callback()
 
   def get_global_illum_filter_value(self):
     # Called by a sensor when it wants to check the global illumination filter value
@@ -69,7 +70,13 @@ class AutoLight(hass.Hass):
     for sensor in self.sensors:
       if sensor.hold_light_on():
         return True
-      return False
+    return False
+
+  def any_light_on(self):
+    for light in self.lights:
+      if self.get_state(light["entity_id"]) == "on":
+        return True
+    return False
 
   def light_off(self, kwargs):
     self.light_switch("off")
@@ -84,7 +91,19 @@ class AutoLight(hass.Hass):
         self.log("Turned OFF {}".format(self.friendly_name(light["entity_id"])))
   
   def evaluate_light_sensor(self, entity_id, threshold):
-    sensor_value = int(self.get_state(entity_id))
+    
+    # Try 5 times to get the sensor value
+    sensor_state = ""
+    tries = 0
+    while tries <= 5 and not sensor_state.isdigit():
+      sensor_state = self.get_state(entity_id)
+      tries += 1
+
+    if not sensor_state.isdigit():
+      self.log("ERROR: Sensor {} returned state {} after {} tries to get a number. Assuming value 0 (full darkness).".format(self.friendly_name(entity_id), sensor_state, tries))
+      sensor_state = "0"
+
+    sensor_value = int(sensor_state)
     return LightSensorEvaluation.evaluate(self.friendly_name(entity_id), sensor_value, threshold)
 
 # TODO implement abc

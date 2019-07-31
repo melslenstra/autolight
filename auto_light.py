@@ -1,4 +1,5 @@
 import appdaemon.plugins.hass.hassapi as hass
+from abc import ABC, abstractmethod
 
 class AutoLight(hass.Hass):
 
@@ -106,8 +107,7 @@ class AutoLight(hass.Hass):
     sensor_value = int(sensor_state)
     return LightSensorEvaluation.evaluate(self.friendly_name(entity_id), sensor_value, threshold)
 
-# TODO implement abc
-class Sensor:
+class Sensor(ABC):
   def __init__(self, config, listen_state, log, get_state, global_illum_callback, start_timer_callback, cancel_timer_callback, on_callback, evaluate_light_sensor, friendly_name):
     self.listen_state = listen_state
     self.log = log
@@ -127,7 +127,7 @@ class Sensor:
       self.light_sensor = None
       
     self.sensor_entity_id = config["entity_id"]
-    self.listen_state(self.state_changed, self.sensor_entity_id)
+    self.listen_state(self.__state_changed, self.sensor_entity_id)
 
     light_sensor_logmsg = self.light_sensor_entity_id if self.light_sensor != None else "NONE"
     self.log("-- Initialized {} sensor {} with light sensor {}".format(self.get_type_name(), self.friendly_name(self.sensor_entity_id), light_sensor_logmsg))
@@ -138,19 +138,23 @@ class Sensor:
     else:
       return self.global_illum_callback()
 
+  @abstractmethod
   def hold_light_on(self):
     pass
 
+  @abstractmethod
   def trigger_on(self):
     pass
 
+  @abstractmethod
   def trigger_off(self):
     pass
 
+  @abstractmethod
   def get_type_name(self):
     pass
 
-  def state_changed(self, entity, attribute, old, new, kwargs):
+  def __state_changed(self, entity, attribute, old, new, kwargs):
     # Always filter out bogus events, we're only looking for changes.
     # TODO: make this behavior (optionally) configurable
     if new == old:

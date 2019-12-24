@@ -23,20 +23,27 @@ class AutoLight(hass.Hass):
         self.sensors = []
         if "sensors" in self.args:
             for sensor_config in self.args["sensors"]:
-                if sensor_config["type"].lower() == "motion":
-                    self.sensors.append(MotionSensor(sensor_config, self.listen_state, self.log, self.get_state, self.get_global_illum_filter_value,
-                                                     self.start_timer_callback, self.cancel_timer_callback, self.on_callback, self.evaluate_light_sensor, self.friendly_name))
-                elif sensor_config["type"].lower() == "door":
-                    self.sensors.append(DoorSensor(sensor_config, self.listen_state, self.log, self.get_state, self.get_global_illum_filter_value,
-                                                   self.start_timer_callback, self.cancel_timer_callback, self.on_callback, self.evaluate_light_sensor, self.friendly_name))
+                type_name = sensor_config["type"].lower()
+                if type_name == "motion":
+                    sensor_type = MotionSensor
+                elif type_name == "door":
+                    sensor_type = DoorSensor
+                elif type_name == "closetdoor":
+                    sensor_type = ClosetDoorSensor
                 else:
                     self.log("Specified sensor type not supported: {}".format(sensor_config["type"]))
+                
+                self.sensors.append(self.create_sensor(sensor_config, sensor_type))
 
         # Call start timer routine to make sure any lights that were on during a HA/AppDaemon/app restart are eventually turned off.
         # This does account for motion sensors holding the light on because they'll eventually turn off and trigger the timer there.
         self.light_on = self.any_light_on()
         if self.light_on:
             self.start_timer_callback()
+
+    def create_sensor(self, sensor_config, sensor_type):
+        return sensor_type(sensor_config, self.listen_state, self.log, self.get_state, self.get_global_illum_filter_value, self.start_timer_callback, self.cancel_timer_callback,
+                           self.on_callback, self.evaluate_light_sensor, self.friendly_name)
 
     def get_global_illum_filter_value(self):
         # Called by a sensor when it wants to check the global illumination filter value
@@ -220,6 +227,23 @@ class DoorSensor(Sensor):
         # Door sensors do nothing when closing the door
         # TODO make door sensor behavior more configurable?
         pass
+
+
+class ClosetDoorSensor(Sensor):
+    def hold_light_on(self):
+        # Closet door holds light on until the door is closed again
+        return self.get_illum_filter_value() and self.get_state(self.sensor_entity_id) == "on"
+
+    def get_type_name(self):
+        return "Closet Door"
+
+    def trigger_on(self):
+        # Turn the light on
+        self.on_callback()
+
+    def trigger_off(self):
+        # Start the timer to turn it back off
+        self.start_timer_callback()
 
 
 class LightSensorEvaluation:

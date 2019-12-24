@@ -69,7 +69,7 @@ class AutoLight(hass.Hass):
             self.timer = self.run_in(self.light_off, self.delay_seconds)
             self.log("Turn off timer started ({} seconds)".format(self.delay_seconds))
         else:
-            self.light_off()
+            self.light_off(None)
 
     def hold_light_on(self):
         for sensor in self.sensors:

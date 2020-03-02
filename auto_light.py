@@ -12,8 +12,12 @@ class AutoLight(hass.Hass):
         self.lights = self.args["lights"]
         self.delay_seconds = self.args["delay_seconds"]
 
+        for light in self.lights:
+            self.check_entity_exists(light)
+
         if "light_sensor" in self.args:
             self.global_illum_sensor_entityid = self.args["light_sensor"]["entity_id"]
+            self.check_entity_exists(self.global_illum_sensor_entityid)
             self.global_illum_threshold = self.args["light_sensor"]["threshold"]
         else:
             self.global_illum_sensor_entityid = None
@@ -32,7 +36,7 @@ class AutoLight(hass.Hass):
                     sensor_type = ClosetDoorSensor
                 else:
                     self.log("Specified sensor type not supported: {}".format(sensor_config["type"]))
-                
+
                 self.sensors.append(self.create_sensor(sensor_config, sensor_type))
 
         # Call start timer routine to make sure any lights that were on during a HA/AppDaemon/app restart are eventually turned off.
@@ -43,7 +47,7 @@ class AutoLight(hass.Hass):
 
     def create_sensor(self, sensor_config, sensor_type):
         return sensor_type(sensor_config, self.listen_state, self.log, self.get_state, self.get_global_illum_filter_value, self.start_timer_callback, self.cancel_timer_callback,
-                           self.on_callback, self.evaluate_light_sensor, self.friendly_name)
+                           self.on_callback, self.evaluate_light_sensor, self.friendly_name, self.check_entity_exists)
 
     def get_global_illum_filter_value(self):
         # Called by a sensor when it wants to check the global illumination filter value
@@ -109,23 +113,30 @@ class AutoLight(hass.Hass):
             return LightSensorEvaluation.fake_result(True)
 
         # Try 5 times to get the sensor value
-        sensor_state = ""
+        sensor_state = None
+        sensor_value = None
         tries = 0
-        while tries <= 5 and not sensor_state.isdigit():
+        while tries <= 5 and sensor_value == None:
             sensor_state = self.get_state(entity_id)
-            tries += 1
+            try:
+                sensor_value = float(sensor_state)
+            except:
+                tries += 1
 
-        if not sensor_state.isdigit():
+        if sensor_value == None:
             self.log("ERROR: Sensor {} returned state {} after {} tries to get a number. Assuming value 0 (full darkness).".format(self.friendly_name(entity_id), sensor_state, tries))
-            sensor_state = "0"
-
-        sensor_value = int(sensor_state)
+            sensor_value = 0.0
 
         return LightSensorEvaluation.evaluate(self.friendly_name(entity_id), sensor_value, threshold)
 
+    def check_entity_exists(self, entity_id):
+        state = self.get_state(entity_id)
+        if state == None:
+            self.log("ERROR: Entity {} missing or unavailable".format(entity_id))
+
 
 class Sensor(ABC):
-    def __init__(self, config, listen_state, log, get_state, global_illum_callback, start_timer_callback, cancel_timer_callback, on_callback, evaluate_light_sensor, friendly_name):
+    def __init__(self, config, listen_state, log, get_state, global_illum_callback, start_timer_callback, cancel_timer_callback, on_callback, evaluate_light_sensor, friendly_name, check_entity_exists):
         self.listen_state = listen_state
         self.log = log
         self.global_illum_callback = global_illum_callback
@@ -135,15 +146,18 @@ class Sensor(ABC):
         self.on_callback = on_callback
         self.evaluate_light_sensor = evaluate_light_sensor
         self.friendly_name = friendly_name
+        self.check_entity_exists = check_entity_exists
 
         if "light_sensor" in config:
             self.light_sensor = config["light_sensor"]
             self.light_sensor_entity_id = self.light_sensor["entity_id"]
+            self.check_entity_exists(self.light_sensor_entity_id)
             self.light_sensor_threshold = self.light_sensor["threshold"]
         else:
             self.light_sensor = None
 
         self.sensor_entity_id = config["entity_id"]
+        self.check_entity_exists(self.sensor_entity_id)
         self.listen_state(self.__state_changed, self.sensor_entity_id)
 
         light_sensor_logmsg = self.light_sensor_entity_id if self.light_sensor != None else "NONE"
@@ -183,7 +197,8 @@ class Sensor(ABC):
         if new == "on":
             result = self.get_illum_filter_value()
             if result.dark_enough:
-                self.log("-- {} sensor passed, light sensor {} value {} is on or below threshold {}".format(self.friendly_name(self.sensor_entity_id), result.sensor_friendly_name, result.value, result.threshold))
+                if result.threshold != None:
+                    self.log("-- {} sensor passed, light sensor {} value {} is on or below threshold {}".format(self.friendly_name(self.sensor_entity_id), result.sensor_friendly_name, result.value, result.threshold))
                 self.trigger_on()
             else:
                 self.log("-- {} sensor filtered, light sensor {} value {} is above threshold {}".format(self.friendly_name(self.sensor_entity_id), result.sensor_friendly_name, result.value, result.threshold))

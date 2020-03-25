@@ -98,9 +98,10 @@ class AutoLight(hass.Hass):
         self.light_switch("off")
 
     def light_switch(self, on):
-        self.light_on = on
+        turn_light_on = (on == "on")
+        self.light_on = turn_light_on
         for light in self.lights:
-            if on == "on":
+            if turn_light_on:
                 self.turn_on(light["entity_id"])
                 self.log("Turned ON {}".format(self.friendly_name(light["entity_id"])))
             else:

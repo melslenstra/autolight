@@ -7,6 +7,7 @@ With just one sensor, it's easy to write a native Home assistant automation to t
 * Control any number of lights or other binary controllable entities
 * Use any combination of sensors to control the light:
   * Door sensors turn on the light when the door is opened, and immediately start a timer to turn off the light after a configured time period. This behavior works well with doors that are often left open for long periods of time, where you just want the door to serve as an instant trigger when you open it.
+  * Closet door sensors are simpler: they turn on the light when the door is opened, and start the turn-off timer when closed. In combination with a `delay_seconds` value of `0`, this makes the light turn on and off immediately when the door is opened or closed.
   * Motion sensors turn on the light when motion is detected. When motion is no longer detected on _any_ of the connected sensors, the timer to turn off the light is started.
   * All sensors can be configured with a specific light sensor entity that gates the triggering of that sensor based on the local ambient light level. This can be useful if one light illuminates a large area and you want the sensor in a specific section to only trigger the light when that section is dark enough to need extra light.
 * Global light sensor: if you don't need specific light sensor configuration for each sensor, you can configure a global light sensor that is used to filter the triggers from all sensors.

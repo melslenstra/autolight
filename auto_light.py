@@ -13,7 +13,7 @@ class AutoLight(hass.Hass):
         self.delay_seconds = self.args["delay_seconds"]
 
         for light in self.lights:
-            self.check_entity_exists(light)
+            self.check_entity_exists(light["entity_id"])
 
         if "light_sensor" in self.args:
             self.global_illum_sensor_entityid = self.args["light_sensor"]["entity_id"]
@@ -41,8 +41,7 @@ class AutoLight(hass.Hass):
 
         # Call start timer routine to make sure any lights that were on during a HA/AppDaemon/app restart are eventually turned off.
         # This does account for motion sensors holding the light on because they'll eventually turn off and trigger the timer there.
-        self.light_on = self.any_light_on()
-        if self.light_on:
+        if self.any_light_on():
             self.start_timer_callback()
 
     def create_sensor(self, sensor_config, sensor_type):
@@ -99,7 +98,6 @@ class AutoLight(hass.Hass):
 
     def light_switch(self, on):
         turn_light_on = (on == "on")
-        self.light_on = turn_light_on
         for light in self.lights:
             if turn_light_on:
                 self.turn_on(light["entity_id"])
@@ -110,7 +108,7 @@ class AutoLight(hass.Hass):
 
     def evaluate_light_sensor(self, entity_id, threshold):
         # If the light is already on, don't evaluate the light sensors.
-        if self.light_on:
+        if self.any_light_on():
             return LightSensorEvaluation.fake_result(True)
 
         # Try 5 times to get the sensor value
